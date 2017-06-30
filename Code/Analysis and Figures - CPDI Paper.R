@@ -11,6 +11,7 @@
   script_timer <- proc.time()
   
   ### Linking to Project Directories
+    setwd('/Users/stephenscherrer/Google Drive/Weng Lab/Manuscripts/Scherrer - CPDI Model Paper/CPDI Submission Repository')
     project_dir = getwd()
     data_dir = file.path(project_dir, 'data')
     results_dir = file.path(project_dir, 'results')
@@ -1783,6 +1784,8 @@ as.number = function(x){
         
       
 ###### Miscelanious Plots and Figures
+        
+        label_size = 4
     #### Figure 2. Direct and First Multipath arrival comparision
       ### Setting up data repository and determining distance to calculate over
       direct_arrival_times = c()
@@ -1810,59 +1813,77 @@ as.number = function(x){
       ### Plotting
       plot(y = direct_arrival_times, x = 1:calc_distance, 
            type = 'l', 
-           cex = 2,
-           cex.lab = 2,
-           cex.axis = 2,
+           cex = label_size,
+           cex.lab = label_size,
+           cex.axis = label_size,
            # main = 'Arrival Time of Direct and First Surface Reflected Multipath \n
            #     Receiver Depth 250 m, Transmitter Depth = 250 m',
-           ylab = 'Arrival Time (s)', xlab = 'Distance Between Tag and Receiver (m)', font = 1)
+           ylab = 'Arrival Time (s)', xlab = 'Distance Between Tag and Receiver (m)', font = 1,  cex.lab = label_size, cex.axis = label_size)
       lines(y = first_multipath_arrival_times, x = 1:calc_distance, type = 'l', lty = 4)
       dev.off()
       
       
   #### Figure 5. Comparing Deep and Shallow Water Detection Profiles
     ### Plot Set-up
-      png('Figure 5 - Comparing deep and shallow detection profiles.png', width = 2400, height = 1200)
-      mar.default <- c(5,4,4,2) + 0.1
-      par(mfrow = c(1, 2), mar = mar.default + c(0, 4, 0, 0)) 
+      mar.default <- c(5,8,4,2) + 0.1
       
+      label_size = 2.75
+      png('Figure 5 - Comparing deep and shallow detection profiles.png', width = 2550, height = 3300)
+      par(mfrow = c(2, 1), mar = mar.default, mgp = c(40, 1, 0), oma = c(7,7,7,7)) 
+
       ### Plotting Deep Water Ranging Experiment Results
       exp_1_data_to_plot = detection_df_1[which(detection_df_1$height_of_tag_off_bottom == 1 & detection_df_1$height_of_receiver_off_bottom == 1 & detection_df_1$direction == "In" & detection_df_1$day_night == "Day"), ]
       plot((candidate_model_predictions_1$model_119$predicted_rates/60) ~ c(0:1000), 
            type = 'l', 
-           xlim = c(0, 1000), xlab = "Distance Between Tag and Receiver (m)",
-           ylim = c(0, 1), ylab = "% of Transmissions Detected",
-           cex = 2,
-           cex.lab = 2,
-           cex.axis = 2,
-           main = "Deep Water Ranging Experiment")
-      points((exp_1_data_to_plot$detections/60) ~ exp_1_data_to_plot$distance, pch = 19, cex = 2)
+           xlim = c(0, 1000), xlab = "",
+           ylim = c(0, 1), ylab = "",
+           cex = 4,
+           cex.lab = label_size,
+           cex.axis = label_size,
+           lwd = 10)
+      points((exp_1_data_to_plot$detections/60) ~ exp_1_data_to_plot$distance, pch = 19, cex = label_size)
+      
+      ## Adding Axis labels
+      mtext("Distance Between Tag and Receiver (m)", side=1, line=6, cex = 4)
+      mtext("% of Transmissions Detected", side=2, line=6, cex = 4)
+      
       
       ## Adding AMDR to plot
-      points(x = levels(candidate_model_summary_1$ave_max_distance[1])[candidate_model_summary_1$ave_max_distance[1]], y = .05, pch = 8, cex = 2)
-      text(x = as.numeric(levels(candidate_model_summary_1$ave_max_distance[1])[candidate_model_summary_1$ave_max_distance[1]]) +50, y = .075, labels = paste('AMDR \n', max_distance-1, 'm'), col = 'black', cex = 1.5)
+      points(x = levels(candidate_model_summary_1$ave_max_distance[1])[candidate_model_summary_1$ave_max_distance[1]], y = .05, pch = '*', cex = 10)
+      text(x = as.numeric(levels(candidate_model_summary_1$ave_max_distance[1])[candidate_model_summary_1$ave_max_distance[1]]) +50, y = .075, labels = paste('AMDR \n', max_distance-1, 'm'), col = 'black', cex = label_size)
       
       ## Adding CPDI to plot
       if(levels(candidate_model_summary_1$cpdi_extent)[candidate_model_summary_1$cpdi_extent][3] != 0){
-        points(x = as.numeric(levels(candidate_model_summary_1$cpdi_extent)[candidate_model_summary_1$cpdi_extent])[3], y = (candidate_model_predictions_1$model_119$predicted_rates[as.numeric(levels(candidate_model_summary_1$cpdi_extent)[candidate_model_summary_1$cpdi_extent])[3]] / 60), pch = 8, cex = 2)
-        text(x = levels(candidate_model_summary_1$cpdi_extent)[candidate_model_summary_1$cpdi_extent][3], y = .5, labels = paste('CPDI Extent \n ', levels(candidate_model_summary_1$cpdi_extent)[candidate_model_summary_1$cpdi_extent][3], 'm'), cex = 1.5)
+        points(x = as.numeric(levels(candidate_model_summary_1$cpdi_extent)[candidate_model_summary_1$cpdi_extent])[3], y = (candidate_model_predictions_1$model_119$predicted_rates[as.numeric(levels(candidate_model_summary_1$cpdi_extent)[candidate_model_summary_1$cpdi_extent])[3]] / 60), pch = '*', cex = 10)
+        text(x = as.numeric(levels(candidate_model_summary_1$cpdi_extent)[candidate_model_summary_1$cpdi_extent][2]) + 15, y = .5, labels = paste('CPDI Extent \n ', levels(candidate_model_summary_1$cpdi_extent)[candidate_model_summary_1$cpdi_extent][3], 'm'), cex = label_size)
       }
+      
+      ## Adding A Text
+      text(x = 1000, y = .95, labels = "A", cex = 6)
       
       ### Plotting Shallow Water Ranging Experiment Results
       exp_2_data_to_plot = detection_df_2[which(detection_df_2$height_of_receiver_off_bottom == 1 & detection_df_2$direction == "in" & detection_df_2$day_night == "day"), ]
       plot((candidate_model_predictions_2$model_123$predicted_rates/60) ~ c(0:1200), 
            type = 'l', 
-           xlim = c(0, 1200), xlab = "Distance Between Tag and Receiver (m)",
-           ylim = c(0, 1), ylab = "% of Transmissions Detected",
-           cex = 2,
-           cex.lab = 2,
-           cex.axis = 2,
-           main = "Shallow Water Ranging Experiment")
-      points((exp_2_data_to_plot$detections/60) ~ exp_2_data_to_plot$distance, pch = 19, cex = 2)
+           xlim = c(0, 1200), xlab = "",
+           ylim = c(0, 1), ylab = "",
+           cex = 4,
+           cex.lab = label_size,
+           cex.axis = label_size,
+           lwd = 10)
+      points((exp_2_data_to_plot$detections/60) ~ exp_2_data_to_plot$distance, pch = 19, cex = label_size)
+      
+      
+      mtext("Distance Between Tag and Receiver (m)", side=1, line=6, cex = 4)
+      mtext("% of Transmissions Detected", side=2, line=6, cex = 4)
       
       ## Adding AMDR to plot
-      points(x = levels(candidate_model_summary_2$ave_max_distance[1])[candidate_model_summary_2$ave_max_distance[1]], y = .05, pch = 8, cex = 2)
-      text(x = as.numeric(levels(candidate_model_summary_2$ave_max_distance[1])[candidate_model_summary_2$ave_max_distance[1]]) + 75, y = .075, labels = paste('AMDR \n', max_distance-1, 'm'), col = 'black', cex = 2)
+      points(x = levels(candidate_model_summary_2$ave_max_distance[1])[candidate_model_summary_2$ave_max_distance[1]], y = .05, pch = '*', cex = 10)
+      text(x = as.numeric(levels(candidate_model_summary_2$ave_max_distance[1])[candidate_model_summary_2$ave_max_distance[1]]) + 75, y = .075, labels = paste('AMDR \n', max_distance-1, 'm'), col = 'black', cex = label_size)
+      
+      ## Adding B Text
+      text(x = 1200, y = .95, labels = "B", cex = 6)
+      
       dev.off()
       
       

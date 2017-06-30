@@ -1,4 +1,4 @@
-"","Receiver Height (m)","Transmitter Height (m)","Tide Direction","Time of Day","Average Maximum Detection Radius (m)","CPDI Extent From GAM","CPDI Prediction from Model"
+"","Receiver Height (m)","Transmitter Height (m)","Tide Direction","Diurnal Period","Average Maximum Detection Radius (m)","CPDI Extent From GAM (m)","CPDI Prediction from Model (m)"
 "1","30","15","In","Day","843, 843, 843.5, 844, 844","276, 276, 276.5, 277, 277","326"
 "2","30","15","Out","Day","843, 843, 843.5, 844, 844","276, 276, 276.5, 277, 277","326"
 "3","30","1","In","Day","846, 846, 846, 846, 846","276, 276, 276.5, 277, 277","301"
