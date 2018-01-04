@@ -1,483 +1,480 @@
-## Changing our CPDI Criterion
-max_rate_index = which.max(predicted_rates)
-max_rate_minus_se = predicted_rates[max_rate_index] - predicted_error_fits.se[max_rate_index]
-all_rates_plus_se = predicted_rates[0:max_rate_index] + predicted_error_fits.se[0:max_rate_index]
-cpdi_extent = which.min(abs(max_rate_minus_se - all_rates_plus_se)) - 1 #  subtract 1 because predictions start at 0, while indexing starts at 1
-## Determining the model's R^2 value
-r.sq = summary(candidate_model)$r.sq
-## Determinning deviance explained by the model
-dev.exp = summary(candidate_model)$dev.expl
-## Saving summary stats to to model summary dataframe
-candidate_model_summary_1 = rbind(candidate_model_summary_1, cbind(candidate_model_id, paste(candidate_model_terms, sep = ' ', collapse = ' '), r.sq, dev.exp, candidate_model$aic, ave_max_distance, cpdi_extent))
+direct_arrival_times = c(direct_arrival_times, arrival_times[1])
+first_multipath_arrival_times = c(first_multipath_arrival_times, arrival_times[2])
 }
-colnames(candidate_model_summary_1) = c('model_id', 'model_terms', 'r.sq', 'dev.expl', 'aic', 'ave_max_distance', 'cpdi_extent')
-names(candidate_model_predictions_1) = as.character(candidate_model_summary_1$model_id)
-## R sq range from candidate models
-rsq = fivenum(as.numeric(as.character(candidate_model_summary_1$r.sq)))
-# 0.6465015 0.6465026 0.6465209 0.6465408 0.6465411
-## Deviance explained by candidate models
-dev_explained = fivenum(as.numeric(as.character(candidate_model_summary_1$dev.expl)))
-## Average maximum detection radius
-amdr = fivenum(as.numeric(as.character(candidate_model_summary_1$ave_max_distance)))
-## CPDI extent from candidate models
-cpdi_extent = fivenum(as.numeric(as.character(candidate_model_summary_1$cpdi_extent)))
-### Running Mechanistic CPDI model for receiver position
-cpdi_model = predict_cpdi_interference(bottom_depth = 300,
-ave_max_detection_radius = amdr[3],
-receiver_depth = (300 - receiver_height),
-speed_of_sound = 1530,
-max_horizontal_dist = 1000,
-evaluation_interval = 1,
-blanking_interval = .260,
-plot = FALSE)
-## Getting CPDI prediction from model
-cpdi_prediction = min(which(cpdi_model[(300 - tag_height), ] == 1)) - 1 # because distances are indexed starting at 1 and not 0
-print(cpdi_prediction)
-## Writing output of all this to table
-table_1 = rbind(table_1,  cbind(receiver_height, tag_height, tide_direction, time_of_day, paste(amdr, collapse =", "), paste(cpdi_extent, collapse =", "), cpdi_prediction))
-#### Plotting Mechanistic Model Prediction and GAM Fit prediction
-## Setting directory to figure directory
-setwd(figure_dir)
-## Subsetting data
-subset_prediction_data = detection_df_1[which(detection_df_1$height_of_receiver_off_bottom == receiver_height & detection_df_1$height_of_tag_off_bottom == tag_height & detection_df_1$direction == tide_direction & detection_df_1$day_night == time_of_day), ]
-### Creating Figure
-image_name = paste('DWRT-RH', receiver_height, '-TH', tag_height, '-TD', tide_direction, '-TOD', time_of_day, '.png', sep = "")
-png(filename = image_name, width = 1000, height = 500)
-par(mfrow = c(1,2), oma = c(0, 0, 3, 0))
-plot_heat_map(cpdi_model, save = FALSE, save_description = parameter_description_for_figure_name, main = "Mechanistic Model Prediction", compress_x_labels = 100, compress_y_labels = 50)
-## Creating confidence intervals from predicted error fits
-upper_ci = predicted_rates + (2 * predicted_error_fits.se)
-lower_ci = predicted_rates - (2 * predicted_error_fits.se)
-## Converting detections to recovery rate
-recovery_rates = predicted_rates / 60
-## Plotting Empty Model
-plot(x = subset_prediction_data$distance, y = subset_prediction_data$recovery_rate,
-ylim=c(0,1),
-main = 'GAM Criteron Estimation',
-xlab = 'Distance Between Tag and Receiver (m)', ylab = '% Transmissions Detected',
-col = 'black',
-pch = 19,
-cex = .25
-)
-## Looping through model fits
-for(r in 1:length(candidate_model_predictions_1)){
-predicted_recovery_rate = (candidate_model_predictions_1[[r]]$predicted_rates)/60
-lines(x = 0:1000 ,y = predicted_recovery_rate)
+mp_index = c(!is.na(first_multipath_arrival_times), FALSE)
+lines(y = first_multipath_arrival_times[mp_index], x = c(1:calc_distance)[mp_index], type = 'l', lty = 3, lwd = 5)
+text(x = 30, y = first_multipath_arrival_times[40]+.024, labels = paste(depth, 'm'), cex = label_size)
+interference_index = which(first_multipath_arrival_times[mp_index] - direct_arrival_times[mp_index] <= 0.26)
+if(length(interference_index) > 0){
+lines(y = first_multipath_arrival_times[interference_index], x = c(1:calc_distance)[interference_index], lty = 1, lwd = 5)
 }
-## Plotting individual data points
-points(x = subset_prediction_data$distance,
-y = subset_prediction_data$recovery_rate,
-pch = 19, cex = .25, col = 'black')
-## Adding average maximum distance text
-max_distance = 500+(which(abs(round(predicted_rates[500:1000]) - detection_threshold) == min(abs(round(predicted_rates[500:1000]) - detection_threshold))))-1 #subtract 1 because predictions start at 0, not 1
-max_distance_lower_ci = 500+(which(abs(lower_ci[500:1000] - detection_threshold) == min(abs(lower_ci[500:1000] - detection_threshold)))) # subtract 1 because predictions start at 0, not 1
-max_distance_upper_ci = 500+(which(abs(upper_ci[500:1000] - detection_threshold) == min(abs(upper_ci[500:1000] - detection_threshold)))) # subtract 1 because predictions start at 0, not 1
-## Adding AMDR to plot
-points(x = amdr[3], y = .05, pch = 8)
-text(x = max_distance +50, y = .15, labels = paste('AMDR \n', max_distance-1, 'm'), col = 'black', cex = .75)
-## Adding CPDI to plot
-if(cpdi_extent[3] != 0){
-points(x = cpdi_extent[3], y = predicted_rates[cpdi_extent[3]], pch = 4)
-text(x = cpdi_extent[3], y = max(recovery_rates) + .1, labels = paste('CPDI Extent \n ', cpdi_extent[3], 'm'), cex = .75)
 }
-mtext('CPDI Predictions for Deep Water Ranging Experiment \n ', font = 2,outer = TRUE)
-mtext(paste(' \n Receiver Height =', receiver_height, 'm, Tag Height =', tag_height, 'm, Tide Direction =', tide_direction, 'Diurnal Period =', time_of_day),outer = TRUE)
 dev.off()
-# beep(1)
+label_size = 2.5
+#### Figure 2. Direct and First Multipath arrival comparision
+### Setting up data repository and determining distance to calculate over
+direct_arrival_times = c()
+first_multipath_arrival_times = c()
+calc_distance = 2000
+simulated_sound_speed = 1530
+depth = 100
+### Running arrival simulation
+for(dist in 1:calc_distance){
+arrival_times = get_surf_paths(surface_to_tag_distance = depth,
+surface_to_receiver_distance = depth,
+tag_to_receiver_horizontal_distance = dist,
+bottom_depth = 500,
+speed_of_sound = simulated_sound_speed,
+ave_max_detection_radius = 1000)
+direct_arrival_times = c(direct_arrival_times, arrival_times[1])
+first_multipath_arrival_times = c(first_multipath_arrival_times, arrival_times[2])
 }
-}
-}
-}
-cpdi_model = predict_cpdi_interference(bottom_depth = 300,
-ave_max_detection_radius = 843.5,
-receiver_depth = (300 - receiver_height),
-speed_of_sound = 1530,
-max_horizontal_dist = 1000,
-evaluation_interval = 1,
-blanking_interval = .260,
-plot = FALSE)
-cpdi_prediction = min(which(cpdi_model[(300 - tag_height), ] == 1)) - 1 # because distances are indexed starting at 1 and not 0
-print(cpdi_prediction)
-cpdi_model = predict_cpdi_interference(bottom_depth = 300,
-ave_max_detection_radius = 846,
-receiver_depth = (300 - receiver_height),
-speed_of_sound = 1530,
-max_horizontal_dist = 1000,
-evaluation_interval = 1,
-blanking_interval = .260,
-plot = FALSE)
-cpdi_prediction = min(which(cpdi_model[(300 - tag_height), ] == 1)) - 1 # because distances are indexed starting at 1 and not 0
-print(cpdi_prediction)
-cpdi_model = predict_cpdi_interference(bottom_depth = 300,
-ave_max_detection_radius = 840,
-receiver_depth = (300 - receiver_height),
-speed_of_sound = 1530,
-max_horizontal_dist = 1000,
-evaluation_interval = 1,
-blanking_interval = .260,
-plot = FALSE)
-cpdi_prediction = min(which(cpdi_model[(300 - tag_height), ] == 1)) - 1 # because distances are indexed starting at 1 and not 0
-print(cpdi_prediction)
-cpdi_model = predict_cpdi_interference(bottom_depth = 300,
-ave_max_detection_radius = 40,
-receiver_depth = (300 - receiver_height),
-speed_of_sound = 1530,
-max_horizontal_dist = 1000,
-evaluation_interval = 1,
-blanking_interval = .260,
-plot = FALSE)
-cpdi_prediction = min(which(cpdi_model[(300 - tag_height), ] == 1)) - 1 # because distances are indexed starting at 1 and not 0
-print(cpdi_prediction)
-cpdi_model = predict_cpdi_interference(bottom_depth = 300,
-ave_max_detection_radius = 844,
-receiver_depth = (300 - receiver_height),
-speed_of_sound = 1530,
-max_horizontal_dist = 1000,
-evaluation_interval = 1,
-blanking_interval = .260,
-plot = FALSE)
-cpdi_prediction = min(which(cpdi_model[(300 - tag_height), ] == 1)) - 1 # because distances are indexed starting at 1 and not 0
-print(cpdi_prediction)
-cpdi_model = predict_cpdi_interference(bottom_depth = 300,
-ave_max_detection_radius = 844,
-receiver_depth = (300 - 30),
-speed_of_sound = 1530,
-max_horizontal_dist = 1000,
-evaluation_interval = 1,
-blanking_interval = .260,
-plot = FALSE)
-cpdi_prediction = min(which(cpdi_model[(300 - 1), ] == 1)) - 1 # because distances are indexed starting at 1 and not 0
-print(cpdi_prediction)
-cpdi_model = predict_cpdi_interference(bottom_depth = 300,
-ave_max_detection_radius = 844,
-receiver_depth = (300 - 30),
-speed_of_sound = 1530,
-max_horizontal_dist = 1000,
-evaluation_interval = 1,
-blanking_interval = .260,
-plot = FALSE)
-cpdi_prediction = min(which(cpdi_model[(300 - 15), ] == 1)) - 1 # because distances are indexed starting at 1 and not 0
-print(cpdi_prediction)
-cpdi_model = predict_cpdi_interference(bottom_depth = 300,
-ave_max_detection_radius = 844,
-receiver_depth = (300 - 1),
-speed_of_sound = 1530,
-max_horizontal_dist = 1000,
-evaluation_interval = 1,
-blanking_interval = .260,
-plot = FALSE)
-cpdi_prediction = min(which(cpdi_model[(300 - 15), ] == 1)) - 1 # because distances are indexed starting at 1 and not 0
-print(cpdi_prediction)
-cpdi_prediction = min(which(cpdi_model[(300 - 1), ] == 1)) - 1 # because distances are indexed starting at 1 and not 0
-print(cpdi_prediction)
-table_1 = rbind(table_1,  cbind(receiver_height, tag_height, tide_direction, time_of_day, paste(amdr, collapse =", "), paste(cpdi_extent, collapse =", "), cpdi_prediction))
-table_1
-cpdi_model = predict_cpdi_interference(bottom_depth = 300,
-ave_max_detection_radius = 844,
-receiver_depth = (300 - 15),
-speed_of_sound = 1530,
-max_horizontal_dist = 1000,
-evaluation_interval = 1,
-blanking_interval = .260,
-plot = FALSE)
-cpdi_prediction = min(which(cpdi_model[(300 - 1), ] == 1)) - 1 # because distances are indexed starting at 1 and not 0
-print(cpdi_prediction)
-table_1 = rbind(table_1,  cbind(receiver_height, tag_height, tide_direction, time_of_day, paste(amdr, collapse =", "), paste(cpdi_extent, collapse =", "), cpdi_prediction))
-table_1
-for(time_of_day in unique(detection_df_1$day_night)){
-for(receiver_height in as.numeric(levels(unique(detection_df_1$height_of_receiver_off_bottom))[unique(detection_df_1$height_of_receiver_off_bottom)])){
-for(tag_height in as.numeric(levels(unique(detection_df_1$height_of_tag_off_bottom))[unique(detection_df_1$height_of_tag_off_bottom)])){
-for(tide_direction in unique(detection_df_1$direction)){
-## A Master list of all predictor variables from global model to be used for predicting with candidate models
-## Updated with values from loops
-var_predictors = list(
-day_night = time_of_day,
-height_of_tag_off_bottom = tag_height,
-height_of_receiver_off_bottom = receiver_height,
-mean_wspd = median(detection_df_1$mean_wspd),
-mean_gst = median(detection_df_1$mean_gst),
-direction = tide_direction,
-water_level = median(detection_df_1$water_level)
-)
-## Setting up output dataframes for summary statistics and predictions from candidate models
-candidate_model_summary_1 = as.data.frame(NULL)
-candidate_model_predictions_1 = list(NULL)
-## Looping through candidate models
-for(i in 1:length(candidate_models_1)){
-candidate_model_id = paste('model', names(candidate_models_1)[i], sep = '_')
-candidate_model = candidate_models_1[[i]]
-## Subsetting terms from master list of predictors from global model if they appear as model terms in the candidate model
-candidate_model_terms = attr(candidate_model$terms, which = 'term.labels')
-new_mod_data = var_predictors[names(var_predictors) %in% candidate_model_terms]
-### Predicting detection rates using the candidate model under evaluation
-predicted_rates = c()
-predicted_error_fits.fit = c()
-predicted_error_fits.se = c()
-for(dist in 0:1000){
-new_mod_data$distance = dist
-predicted_rates = c(predicted_rates, predict(candidate_model, newdata = new_mod_data, type = "response")[[1]])
-predicted_error_fits.fit = c(predicted_error_fits.fit, predict(candidate_model, newdata = new_mod_data, type = "response", se.fit = TRUE)$fit[[1]])
-predicted_error_fits.se = c(predicted_error_fits.se, predict(candidate_model, newdata = new_mod_data, type = "response", se.fit = TRUE)$se.fit[[1]])
-}
-## Saving model predictions
-model_predictions = list()
-model_predictions$predicted_rates = predicted_rates
-model_predictions$predicted_error_fits.fit = predicted_error_fits.fit
-model_predictions$predicted_error_fits.se = predicted_error_fits.se
-candidate_model_predictions_1[[i]] = model_predictions
-### Summary Stats
-## Determining the average maximum detection radius
-ave_max_distance = 500+(which(abs(predicted_rates[500:1000] - detection_threshold) == min(abs(predicted_rates[500:1000] - detection_threshold))))-1 #subtract 1 because predictions start at 0 but indexing starts at 1 1
-## Determining CPDI Extent
-#cpdi_extent = which.max(round(predicted_rates, digits = 0))-1 # subtract 1 because predictions start at 0, while indexing starts at 1
-## Changing our CPDI Criterion
-max_rate_index = which.max(predicted_rates)
-max_rate_minus_se = predicted_rates[max_rate_index] - predicted_error_fits.se[max_rate_index]
-all_rates_plus_se = predicted_rates[0:max_rate_index] + predicted_error_fits.se[0:max_rate_index]
-cpdi_extent = which.min(abs(max_rate_minus_se - all_rates_plus_se)) - 1 #  subtract 1 because predictions start at 0, while indexing starts at 1
-## Determining the model's R^2 value
-r.sq = summary(candidate_model)$r.sq
-## Determinning deviance explained by the model
-dev.exp = summary(candidate_model)$dev.expl
-## Saving summary stats to to model summary dataframe
-candidate_model_summary_1 = rbind(candidate_model_summary_1, cbind(candidate_model_id, paste(candidate_model_terms, sep = ' ', collapse = ' '), r.sq, dev.exp, candidate_model$aic, ave_max_distance, cpdi_extent))
-}
-colnames(candidate_model_summary_1) = c('model_id', 'model_terms', 'r.sq', 'dev.expl', 'aic', 'ave_max_distance', 'cpdi_extent')
-names(candidate_model_predictions_1) = as.character(candidate_model_summary_1$model_id)
-## R sq range from candidate models
-rsq = fivenum(as.numeric(as.character(candidate_model_summary_1$r.sq)))
-# 0.6465015 0.6465026 0.6465209 0.6465408 0.6465411
-## Deviance explained by candidate models
-dev_explained = fivenum(as.numeric(as.character(candidate_model_summary_1$dev.expl)))
-## Average maximum detection radius
-amdr = fivenum(as.numeric(as.character(candidate_model_summary_1$ave_max_distance)))
-## CPDI extent from candidate models
-cpdi_extent = fivenum(as.numeric(as.character(candidate_model_summary_1$cpdi_extent)))
-### Running Mechanistic CPDI model for receiver position
-cpdi_model = predict_cpdi_interference(bottom_depth = 300,
-ave_max_detection_radius = 844,
-receiver_depth = (300 - 15),
-speed_of_sound = 1530,
-max_horizontal_dist = 1000,
-evaluation_interval = 1,
-blanking_interval = .260,
-plot = FALSE)
-## Getting CPDI prediction from model
-cpdi_prediction = min(which(cpdi_model[(300 - 1), ] == 1)) - 1 # because distances are indexed starting at 1 and not 0
-print(cpdi_prediction)
-## Writing output of all this to table
-table_1 = rbind(table_1,  cbind(receiver_height, tag_height, tide_direction, time_of_day, paste(amdr, collapse =", "), paste(cpdi_extent, collapse =", "), cpdi_prediction))
-#### Plotting Mechanistic Model Prediction and GAM Fit prediction
-## Setting directory to figure directory
+### Plot Set-up
 setwd(figure_dir)
-## Subsetting data
-subset_prediction_data = detection_df_1[which(detection_df_1$height_of_receiver_off_bottom == receiver_height & detection_df_1$height_of_tag_off_bottom == tag_height & detection_df_1$direction == tide_direction & detection_df_1$day_night == time_of_day), ]
-### Creating Figure
-image_name = paste('DWRT-RH', receiver_height, '-TH', tag_height, '-TD', tide_direction, '-TOD', time_of_day, '.png', sep = "")
-png(filename = image_name, width = 1000, height = 500)
-par(mfrow = c(1,2), oma = c(0, 0, 3, 0))
-plot_heat_map(cpdi_model, save = FALSE, save_description = parameter_description_for_figure_name, main = "Mechanistic Model Prediction", compress_x_labels = 100, compress_y_labels = 50)
-## Creating confidence intervals from predicted error fits
-upper_ci = predicted_rates + (2 * predicted_error_fits.se)
-lower_ci = predicted_rates - (2 * predicted_error_fits.se)
-## Converting detections to recovery rate
-recovery_rates = predicted_rates / 60
-## Plotting Empty Model
-plot(x = subset_prediction_data$distance, y = subset_prediction_data$recovery_rate,
-ylim=c(0,1),
-main = 'GAM Criteron Estimation',
-xlab = 'Distance Between Tag and Receiver (m)', ylab = '% Transmissions Detected',
-col = 'black',
-pch = 19,
-cex = .25
-)
-## Looping through model fits
-for(r in 1:length(candidate_model_predictions_1)){
-predicted_recovery_rate = (candidate_model_predictions_1[[r]]$predicted_rates)/60
-lines(x = 0:1000 ,y = predicted_recovery_rate)
+png('Figure 2 - Direct and multipath arrival times.png', width = 2000, height = 1000)
+par(mar = mar.default + c(4, 4, 0, 0), oma = c(0, 1, 0 ,0))
+### Plotting
+plot(y = direct_arrival_times, x = 1:calc_distance,
+type = 'l',
+cex = label_size,
+cex.lab = label_size,
+cex.axis = label_size,
+xlim = c(0, 1000), ylim = c(0, .65),
+xaxs = "i", yaxs = "i",
+# main = 'Arrival Time of Direct and First Surface Reflected Multipath \n
+#     Receiver Depth 250 m, Transmitter Depth = 250 m',
+ylab = 'Arrival Time (s)', xlab = 'Distance Between Tag and Receiver (m)', font = 1,  cex.lab = label_size, cex.axis = label_size, lwd = 5, col = 'black')
+# lines(y = first_multipath_arrival_times, x = 1:calc_distance, type = 'l', lty = 4)
+text(x = 45, y = 0.05, srt = 23, labels = "Direct Path", cex = label_size)
+for(depth in seq(100, 500, 100)){
+### Running arrival simulation
+first_multipath_arrival_times = c()
+direct_arrival_times = c()
+for(dist in 1:calc_distance){
+arrival_times = get_surf_paths(surface_to_tag_distance = depth,
+surface_to_receiver_distance = depth,
+tag_to_receiver_horizontal_distance = dist,
+bottom_depth = 500,
+speed_of_sound = simulated_sound_speed,
+ave_max_detection_radius = 1000)
+direct_arrival_times = c(direct_arrival_times, arrival_times[1])
+first_multipath_arrival_times = c(first_multipath_arrival_times, arrival_times[2])
 }
-## Plotting individual data points
-points(x = subset_prediction_data$distance,
-y = subset_prediction_data$recovery_rate,
-pch = 19, cex = .25, col = 'black')
-## Adding average maximum distance text
-max_distance = 500+(which(abs(round(predicted_rates[500:1000]) - detection_threshold) == min(abs(round(predicted_rates[500:1000]) - detection_threshold))))-1 #subtract 1 because predictions start at 0, not 1
-max_distance_lower_ci = 500+(which(abs(lower_ci[500:1000] - detection_threshold) == min(abs(lower_ci[500:1000] - detection_threshold)))) # subtract 1 because predictions start at 0, not 1
-max_distance_upper_ci = 500+(which(abs(upper_ci[500:1000] - detection_threshold) == min(abs(upper_ci[500:1000] - detection_threshold)))) # subtract 1 because predictions start at 0, not 1
-## Adding AMDR to plot
-points(x = amdr[3], y = .05, pch = 8)
-text(x = max_distance +50, y = .15, labels = paste('AMDR \n', max_distance-1, 'm'), col = 'black', cex = .75)
-## Adding CPDI to plot
-if(cpdi_extent[3] != 0){
-points(x = cpdi_extent[3], y = predicted_rates[cpdi_extent[3]], pch = 4)
-text(x = cpdi_extent[3], y = max(recovery_rates) + .1, labels = paste('CPDI Extent \n ', cpdi_extent[3], 'm'), cex = .75)
+mp_index = c(!is.na(first_multipath_arrival_times), FALSE)
+lines(y = first_multipath_arrival_times[mp_index], x = c(1:calc_distance)[mp_index], type = 'l', lty = 3, lwd = 5)
+text(x = 30, y = first_multipath_arrival_times[40]+.024, labels = paste(depth, 'm'), cex = label_size)
+interference_index = which(first_multipath_arrival_times[mp_index] - direct_arrival_times[mp_index] <= 0.26)
+if(length(interference_index) > 0){
+lines(y = first_multipath_arrival_times[interference_index], x = c(1:calc_distance)[interference_index], lty = 1, lwd = 5)
 }
-mtext('CPDI Predictions for Deep Water Ranging Experiment \n ', font = 2,outer = TRUE)
-mtext(paste(' \n Receiver Height =', receiver_height, 'm, Tag Height =', tag_height, 'm, Tide Direction =', tide_direction, 'Diurnal Period =', time_of_day),outer = TRUE)
+}
 dev.off()
-# beep(1)
+label_size = 2.5
+#### Figure 2. Direct and First Multipath arrival comparision
+### Setting up data repository and determining distance to calculate over
+direct_arrival_times = c()
+first_multipath_arrival_times = c()
+calc_distance = 2000
+simulated_sound_speed = 1530
+depth = 100
+### Running arrival simulation
+for(dist in 1:calc_distance){
+arrival_times = get_surf_paths(surface_to_tag_distance = depth,
+surface_to_receiver_distance = depth,
+tag_to_receiver_horizontal_distance = dist,
+bottom_depth = 500,
+speed_of_sound = simulated_sound_speed,
+ave_max_detection_radius = 1000)
+direct_arrival_times = c(direct_arrival_times, arrival_times[1])
+first_multipath_arrival_times = c(first_multipath_arrival_times, arrival_times[2])
 }
-}
-}
-}
-table_1 = data.frame(NULL)
-## Looping through different combinations of predictor variables
-for(time_of_day in unique(detection_df_1$day_night)){
-for(receiver_height in as.numeric(levels(unique(detection_df_1$height_of_receiver_off_bottom))[unique(detection_df_1$height_of_receiver_off_bottom)])){
-for(tag_height in as.numeric(levels(unique(detection_df_1$height_of_tag_off_bottom))[unique(detection_df_1$height_of_tag_off_bottom)])){
-for(tide_direction in unique(detection_df_1$direction)){
-## A Master list of all predictor variables from global model to be used for predicting with candidate models
-## Updated with values from loops
-var_predictors = list(
-day_night = time_of_day,
-height_of_tag_off_bottom = tag_height,
-height_of_receiver_off_bottom = receiver_height,
-mean_wspd = median(detection_df_1$mean_wspd),
-mean_gst = median(detection_df_1$mean_gst),
-direction = tide_direction,
-water_level = median(detection_df_1$water_level)
-)
-## Setting up output dataframes for summary statistics and predictions from candidate models
-candidate_model_summary_1 = as.data.frame(NULL)
-candidate_model_predictions_1 = list(NULL)
-## Looping through candidate models
-for(i in 1:length(candidate_models_1)){
-candidate_model_id = paste('model', names(candidate_models_1)[i], sep = '_')
-candidate_model = candidate_models_1[[i]]
-## Subsetting terms from master list of predictors from global model if they appear as model terms in the candidate model
-candidate_model_terms = attr(candidate_model$terms, which = 'term.labels')
-new_mod_data = var_predictors[names(var_predictors) %in% candidate_model_terms]
-### Predicting detection rates using the candidate model under evaluation
-predicted_rates = c()
-predicted_error_fits.fit = c()
-predicted_error_fits.se = c()
-for(dist in 0:1000){
-new_mod_data$distance = dist
-predicted_rates = c(predicted_rates, predict(candidate_model, newdata = new_mod_data, type = "response")[[1]])
-predicted_error_fits.fit = c(predicted_error_fits.fit, predict(candidate_model, newdata = new_mod_data, type = "response", se.fit = TRUE)$fit[[1]])
-predicted_error_fits.se = c(predicted_error_fits.se, predict(candidate_model, newdata = new_mod_data, type = "response", se.fit = TRUE)$se.fit[[1]])
-}
-## Saving model predictions
-model_predictions = list()
-model_predictions$predicted_rates = predicted_rates
-model_predictions$predicted_error_fits.fit = predicted_error_fits.fit
-model_predictions$predicted_error_fits.se = predicted_error_fits.se
-candidate_model_predictions_1[[i]] = model_predictions
-### Summary Stats
-## Determining the average maximum detection radius
-ave_max_distance = 500+(which(abs(predicted_rates[500:1000] - detection_threshold) == min(abs(predicted_rates[500:1000] - detection_threshold))))-1 #subtract 1 because predictions start at 0 but indexing starts at 1 1
-## Determining CPDI Extent
-#cpdi_extent = which.max(round(predicted_rates, digits = 0))-1 # subtract 1 because predictions start at 0, while indexing starts at 1
-## Changing our CPDI Criterion
-max_rate_index = which.max(predicted_rates)
-max_rate_minus_se = predicted_rates[max_rate_index] - predicted_error_fits.se[max_rate_index]
-all_rates_plus_se = predicted_rates[0:max_rate_index] + predicted_error_fits.se[0:max_rate_index]
-cpdi_extent = which.min(abs(max_rate_minus_se - all_rates_plus_se)) - 1 #  subtract 1 because predictions start at 0, while indexing starts at 1
-## Determining the model's R^2 value
-r.sq = summary(candidate_model)$r.sq
-## Determinning deviance explained by the model
-dev.exp = summary(candidate_model)$dev.expl
-## Saving summary stats to to model summary dataframe
-candidate_model_summary_1 = rbind(candidate_model_summary_1, cbind(candidate_model_id, paste(candidate_model_terms, sep = ' ', collapse = ' '), r.sq, dev.exp, candidate_model$aic, ave_max_distance, cpdi_extent))
-}
-colnames(candidate_model_summary_1) = c('model_id', 'model_terms', 'r.sq', 'dev.expl', 'aic', 'ave_max_distance', 'cpdi_extent')
-names(candidate_model_predictions_1) = as.character(candidate_model_summary_1$model_id)
-## R sq range from candidate models
-rsq = fivenum(as.numeric(as.character(candidate_model_summary_1$r.sq)))
-# 0.6465015 0.6465026 0.6465209 0.6465408 0.6465411
-## Deviance explained by candidate models
-dev_explained = fivenum(as.numeric(as.character(candidate_model_summary_1$dev.expl)))
-## Average maximum detection radius
-amdr = fivenum(as.numeric(as.character(candidate_model_summary_1$ave_max_distance)))
-## CPDI extent from candidate models
-cpdi_extent = fivenum(as.numeric(as.character(candidate_model_summary_1$cpdi_extent)))
-### Running Mechanistic CPDI model for receiver position
-cpdi_model = predict_cpdi_interference(bottom_depth = 300,
-ave_max_detection_radius = amdr[3],
-receiver_depth = (300 - receiver_height),
-speed_of_sound = 1530,
-max_horizontal_dist = 1000,
-evaluation_interval = 1,
-blanking_interval = .260,
-plot = FALSE)
-## Getting CPDI prediction from model
-cpdi_prediction = min(which(cpdi_model[(300 - tag_height), ] == 1)) - 1 # because distances are indexed starting at 1 and not 0
-print(cpdi_prediction)
-## Writing output of all this to table
-print(cbind(receiver_height, tag_height, tide_direction, time_of_day, paste(amdr, collapse =", "), paste(cpdi_extent, collapse =", "), cpdi_prediction))
-table_1 = rbind(table_1,  cbind(receiver_height, tag_height, tide_direction, time_of_day, paste(amdr, collapse =", "), paste(cpdi_extent, collapse =", "), cpdi_prediction))
-#### Plotting Mechanistic Model Prediction and GAM Fit prediction
-## Setting directory to figure directory
+### Plot Set-up
 setwd(figure_dir)
-## Subsetting data
-subset_prediction_data = detection_df_1[which(detection_df_1$height_of_receiver_off_bottom == receiver_height & detection_df_1$height_of_tag_off_bottom == tag_height & detection_df_1$direction == tide_direction & detection_df_1$day_night == time_of_day), ]
-### Creating Figure
-image_name = paste('DWRT-RH', receiver_height, '-TH', tag_height, '-TD', tide_direction, '-TOD', time_of_day, '.png', sep = "")
-png(filename = image_name, width = 1000, height = 500)
-par(mfrow = c(1,2), oma = c(0, 0, 3, 0))
-plot_heat_map(cpdi_model, save = FALSE, save_description = parameter_description_for_figure_name, main = "Mechanistic Model Prediction", compress_x_labels = 100, compress_y_labels = 50)
-## Creating confidence intervals from predicted error fits
-upper_ci = predicted_rates + (2 * predicted_error_fits.se)
-lower_ci = predicted_rates - (2 * predicted_error_fits.se)
-## Converting detections to recovery rate
-recovery_rates = predicted_rates / 60
-## Plotting Empty Model
-plot(x = subset_prediction_data$distance, y = subset_prediction_data$recovery_rate,
-ylim=c(0,1),
-main = 'GAM Criteron Estimation',
-xlab = 'Distance Between Tag and Receiver (m)', ylab = '% Transmissions Detected',
-col = 'black',
-pch = 19,
-cex = .25
-)
-## Looping through model fits
-for(r in 1:length(candidate_model_predictions_1)){
-predicted_recovery_rate = (candidate_model_predictions_1[[r]]$predicted_rates)/60
-lines(x = 0:1000 ,y = predicted_recovery_rate)
+png('Figure 2 - Direct and multipath arrival times.png', width = 2000, height = 1000)
+par(mar = mar.default + c(4, 4, 0, 0), oma = c(0, 1, 0 ,0))
+### Plotting
+plot(y = direct_arrival_times, x = 1:calc_distance,
+type = 'l',
+cex = label_size,
+cex.lab = label_size,
+cex.axis = label_size,
+xlim = c(0, 1000), ylim = c(0, .65),
+xaxs = "i", yaxs = "i",
+# main = 'Arrival Time of Direct and First Surface Reflected Multipath \n
+#     Receiver Depth 250 m, Transmitter Depth = 250 m',
+ylab = 'Arrival Time (s)', xlab = 'Distance Between Tag and Receiver (m)', font = 1,  cex.lab = label_size, cex.axis = label_size, lwd = 5, col = 'black')
+# lines(y = first_multipath_arrival_times, x = 1:calc_distance, type = 'l', lty = 4)
+text(x = 45, y = 0.05, srt = 23, labels = "Direct Path", cex = label_size)
+for(depth in seq(50, 550, 100)){
+### Running arrival simulation
+first_multipath_arrival_times = c()
+direct_arrival_times = c()
+for(dist in 1:calc_distance){
+arrival_times = get_surf_paths(surface_to_tag_distance = depth,
+surface_to_receiver_distance = depth,
+tag_to_receiver_horizontal_distance = dist,
+bottom_depth = 500,
+speed_of_sound = simulated_sound_speed,
+ave_max_detection_radius = 1000)
+direct_arrival_times = c(direct_arrival_times, arrival_times[1])
+first_multipath_arrival_times = c(first_multipath_arrival_times, arrival_times[2])
 }
-## Plotting individual data points
-points(x = subset_prediction_data$distance,
-y = subset_prediction_data$recovery_rate,
-pch = 19, cex = .25, col = 'black')
-## Adding average maximum distance text
-max_distance = 500+(which(abs(round(predicted_rates[500:1000]) - detection_threshold) == min(abs(round(predicted_rates[500:1000]) - detection_threshold))))-1 #subtract 1 because predictions start at 0, not 1
-max_distance_lower_ci = 500+(which(abs(lower_ci[500:1000] - detection_threshold) == min(abs(lower_ci[500:1000] - detection_threshold)))) # subtract 1 because predictions start at 0, not 1
-max_distance_upper_ci = 500+(which(abs(upper_ci[500:1000] - detection_threshold) == min(abs(upper_ci[500:1000] - detection_threshold)))) # subtract 1 because predictions start at 0, not 1
-## Adding AMDR to plot
-points(x = amdr[3], y = .05, pch = 8)
-text(x = max_distance +50, y = .15, labels = paste('AMDR \n', max_distance-1, 'm'), col = 'black', cex = .75)
-## Adding CPDI to plot
-if(cpdi_extent[3] != 0){
-points(x = cpdi_extent[3], y = predicted_rates[cpdi_extent[3]], pch = 4)
-text(x = cpdi_extent[3], y = max(recovery_rates) + .1, labels = paste('CPDI Extent \n ', cpdi_extent[3], 'm'), cex = .75)
+mp_index = c(!is.na(first_multipath_arrival_times), FALSE)
+lines(y = first_multipath_arrival_times[mp_index], x = c(1:calc_distance)[mp_index], type = 'l', lty = 3, lwd = 5)
+text(x = 30, y = first_multipath_arrival_times[40]+.024, labels = paste(depth, 'm'), cex = label_size)
+interference_index = which(first_multipath_arrival_times[mp_index] - direct_arrival_times[mp_index] <= 0.26)
+if(length(interference_index) > 0){
+lines(y = first_multipath_arrival_times[interference_index], x = c(1:calc_distance)[interference_index], lty = 1, lwd = 5)
 }
-mtext('CPDI Predictions for Deep Water Ranging Experiment \n ', font = 2,outer = TRUE)
-mtext(paste(' \n Receiver Height =', receiver_height, 'm, Tag Height =', tag_height, 'm, Tide Direction =', tide_direction, 'Diurnal Period =', time_of_day),outer = TRUE)
+}
 dev.off()
-# beep(1)
+model_predictions
+source('~/Google Drive/Weng Lab/Manuscripts/Scherrer - CPDI Model Paper/CPDI Submission Repository/Code/Analysis and Figures - CPDI Paper.R', echo=TRUE)
+predicted_rates
+debugSource('~/Google Drive/Weng Lab/Manuscripts/Scherrer - CPDI Model Paper/CPDI Submission Repository/Code/Analysis and Figures - CPDI Paper.R', echo=TRUE)
+rm(list=ls()) # Clear workspace
+### Starting Script Timer
+script_timer <- proc.time()
+### Linking to Project Directories
+setwd('/Users/stephenscherrer/Google Drive/Weng Lab/Manuscripts/Scherrer - CPDI Model Paper/CPDI Submission Repository')
+project_dir = getwd()
+data_dir = file.path(project_dir, 'data')
+results_dir = file.path(project_dir, 'results')
+figure_dir = file.path(project_dir, 'figures')
+source_dir = file.path(project_dir, 'code')
+### Setting Project Directory
+setwd(project_dir)
+### Establishing History
+savehistory(file= file.path(results_dir, "Rhistory"))
+####### Importing principle dependencies ----
+# install.packages('geosphere')
+library('geosphere') # distGeo() Note: wrapped in old lldist function
+# install.packages('reshape')
+library('reshape') # melt()
+# install.packages('MuMIn')
+library('MuMIn') #AICc()
+# install.packages('dplyr')
+library('dplyr') # filter()
+#install.packages('doParallel')
+library('doParallel')
+#install.package('lubridate')
+library('lubridate') # floor_date()
+# install.packages('mgcv')
+library('mgcv') # gam()
+## install.packages('beepr')
+library('beepr') # beep()
+## install.packages('notifyR')
+library('notifyR') # send_push()
+## install.packages('ggplot2')
+library('ggplot2') # geom_bar()
+### Sourcing Mechanistic CPDI Model
+source(file.path(source_dir, 'Mechanistic CPDI Model.R')) # model_receiver_interferenece()
+####### Setting Up Parallel Environment ----
+### Setting up parallel processing for later analysis using pdredge() and foreach()
+## Setting number of cores
+n_cores = detectCores() # Default to the number of cores available on the computer
+## Creating a cluster
+clust = makeCluster(n_cores)
+clusterEvalQ(clust, library('MuMIn')) # loading MuMIn package to clusters for using pdredge function
+clusterEvalQ(clust, library('mgcv')) # loading mgcv package to clusters for using GAM function
+####### Utility Functions ----
+datenum2posix = function(x, timez = "HST") {
+## Function to convert matlab datenum to R posix date
+# Author: Luke Miller   Feb 20, 2011
+# Convert a numeric  MATLAB datenum (days since 0000-1-1 00:00) to seconds in
+# the Unix epoch (seconds since 1970-1-1 00:00). Specify a time zone if the
+# input datenum is anything other than the GMT/UTC time zone.
+days = x - 719529 	# 719529 = days from 1-1-0000 to 1-1-1970
+secs = days * 86400 # 86400 seconds in a day
+# This next string of functions is a complete disaster, but it works.
+# It tries to outsmart R by converting the secs value to a POSIXct value
+# in the UTC time zone, then converts that to a time/date string that
+# should lose the time zone, and then it performs a second as.POSIXct()
+# conversion on the time/date string to get a POSIXct value in the user's
+# specified timezone. Time zones are a goddamned nightmare.
+return(as.POSIXct(strftime(as.POSIXct(x = secs, units = 'secs', origin = '1970-1-1',
+tz = 'UTC'), format = '%Y-%m-%d %H:%M:%S',
+tz = 'UTC', usetz = FALSE), tz = timez))
+}
+convert_tz = function(datetime, new.tz = 'HST'){
+## Function to convert GMT/UTC times to HST time
+datetime.new.tz = strptime(datetime, format = '%Y-%m-%d %H:%M:%S', tz = new.tz)
+dateoffset = datetime-datetime.new.tz
+datetime.new.tz = datetime.new.tz + dateoffset
+return(datetime.new.tz)
+}
+convert_lat_lon = function(ll_deg, ll_min = FALSE){
+## Converts latitude and longitude between ll minutes and ll decimal degrees
+# 2 usages:
+# Convert decimal degrees to degree minutes
+# 1 argument
+# ll_pref is a single argument of latitude or longitude in decimal degrees
+# Returns a prefix and decimal for that argument
+# Convert degree minutes to decimal degrees
+# 2 arguments
+# ll_pref is the latitude or longitude's degree
+# ll_min is the degree minutes
+# returns a single float of ll in decimal degrees
+if (ll_min[1] == FALSE){ #then we are going from one number to two
+ll_deg = as.numeric(as.character(ll_deg))
+ll_bin = matrix(0, length(ll_deg), 2)
+for (r in 1:length(ll_deg)){
+if (isTRUE(ll_deg[r] >= 0)){
+ll_dec = ll_deg[r] - floor(ll_deg[r])
+ll_bin[r, ] = c(floor(ll_deg[r]), (ll_dec)*60)
+} else {
+ll_dec = (ll_deg[r] - ceiling(ll_deg[r]))*-1
+ll_bin[r, ] = c(ceiling(ll_deg[r]), (ll_dec)*60)
 }
 }
+}else{ #if we are converting from two numbers to one
+ll_deg = as.numeric(as.character(ll_deg))
+ll_min = as.numeric(as.character(ll_min))
+ll_bin = matrix(0, length(ll_deg), 1)
+for (r in 1:length(ll_deg)){
+ll_dec_deg = abs(ll_deg[r]) + (abs(ll_min[r])/60)
+if (isTRUE(ll_deg[r] < 0)){
+ll_dec_deg = ll_dec_deg*(-1)
+}
+ll_bin[r] = ll_dec_deg
 }
 }
-names(expected_detections)
-expected_detections = data.frame(
-## From: https://vemco.com/collision-calculator/
-'n_tags' = c(1:18),
-'hourly_detections_total' = c(57, 102, 138, 165, 186, 200, 210, 216, 218, 218, 215, 211, 205, 198, 191, 183, 175, 166),
-stringsAsFactors = FALSE
-)
-expected_detections$hourly_detections_per_tag = expected_detections$hourly_detections_total / expected_detections$n_tags
-plot(x = expected_detections$n_tags, y = expected_detections$hourly_detections_total)
-plot(x = expected_detections$n_tags, y = expected_detections$hourly_detections_total,
-pch = 19,
-main = "Comparing Expected and Observed Number of Detections for the Number of Tags Detected Hourly",
-xlim = 18, xlab = "# of Tags",
-ylim = 300, ylab = "# of Detections")
-plot(x = expected_detections$n_tags, y = expected_detections$hourly_detections_total,
-pch = 19,
-main = "Comparing Expected and Observed Number of Detections for the Number of Tags Detected Hourly",
-xlim = c(0, 18), xlab = "# of Tags",
-ylim = c(0, 300), ylab = "# of Detections")
+return (ll_bin)
+}
+lldist = function(point1, point2){
+## Wrapper function to calculate distance between two lat lon points on a geodesic sphere.
+# Requires distGeo() from the geosphere package
+distance = distGeo(p1 = point1, p2 = point2) / 1000
+return(distance)
+}
+clean_receiver = function(receiver){
+## Returns receiver serial number as a factor, remvoing the 'VR2W-' Prefix
+cleaned_receiver = as.factor(substring(receiver, 6))
+return (cleaned_receiver)
+}
+load_receiver = function(filename, filepath = FALSE){
+## Function to load in receiver data .csv file
+proj_dir = getwd()
+if (filepath != FALSE){
+setwd(filepath)
+}
+receiver_dates = receiver_col_names(read.csv(filename))
+receiver_dates$deployment_date = strptime(receiver_dates$deployment_date, format = '%m/%d/%y %H:%M', tz = 'HST')
+receiver_dates$recovery_date = strptime(receiver_dates$recovery_date, format = '%m/%d/%y %H:%M', tz = 'HST')
+receiver_dates$lat = convert_lat_lon(receiver_dates$lat_deg, receiver_dates$lat_min)
+receiver_dates$lon = convert_lat_lon(receiver_dates$lon_deg, receiver_dates$lon_min)
+setwd(proj_dir)
+return (receiver_dates)
+}
+receiver_col_names = function(receiver_file_raw){
+## Function that renames columns for an imported receiver data file
+receiver_file = receiver_file_raw
+colnames(receiver_file)[1] = 'serviced'
+colnames(receiver_file)[2] = 'station_name'
+colnames(receiver_file)[3] = 'consecutive_deployment_number'
+colnames(receiver_file)[4] = 'deployment_date'
+colnames(receiver_file)[5] = 'recovery_date'
+colnames(receiver_file)[6] = 'recovered'
+colnames(receiver_file)[7] = 'in_data_set'
+colnames(receiver_file)[8] = 'lat_deg'
+colnames(receiver_file)[9] = 'lat_min'
+colnames(receiver_file)[10] = 'lon_deg'
+colnames(receiver_file)[11] = 'lon_min'
+colnames(receiver_file)[12] = 'depth'
+colnames(receiver_file)[13] = 'vr2w_serial'
+colnames(receiver_file)[14] = 'acoustic_release_serial'
+colnames(receiver_file)[15] = 'acoustic_release_battery_life'
+colnames(receiver_file)[16] = 'acoustic_release_voltage_at_deployment'
+colnames(receiver_file)[17] = 'acoustic_release_serial_code'
+colnames(receiver_file)[18] = 'temperature_logger_serial'
+colnames(receiver_file)[19] = 'location_code'
+colnames(receiver_file)[20] = 'deployed_by'
+colnames(receiver_file)[21] = 'recovered_by'
+colnames(receiver_file)[22] = 'comments_deployment'
+colnames(receiver_file)[23] = 'comments_recovery'
+return (receiver_file)
+}
+clean_vue_lat_lon = function(vue_data_df, receiver_data_df){
+## Function that replaces the lat lon positions a receiver may have been initialized with, to field records of coordinates for the actual deployment location.
+station = rep(NA, times = length(vue_data_df$datetime))
+for (i in 1:length(receiver_data_df$station_name)){
+receiver_subset_index = which(vue_data_df$receiver == receiver_data_df$vr2w_serial[i])
+deploy_subset_index = which(vue_data_df$datetime >= receiver_data_df$deployment_date[i])
+recover_subset_index = which(vue_data_df$datetime < na.omit(receiver_data_df$recovery_date[i]))
+ind = Reduce(intersect, list(receiver_subset_index, deploy_subset_index, recover_subset_index))
+vue_data_df$lat[ind] = receiver_data_df$lat[i]
+vue_data_df$lon[ind] = receiver_data_df$lon[i]
+station[ind] = as.character(receiver_data_df$station_name[i])
+}
+vue_data_df$station = as.factor(station)
+return(vue_data_df)
+}
+clean_tag_id = function(tag_id){
+## Function that returns tag ID number as a factor, removing the 'A69-####-' prefix
+cleaned_id = as.factor(substring(tag_id, 10))
+return (cleaned_id)
+}
+vue_col_names = function(vue_data_raw){
+# Function that renames columns for an imported vemco data set
+colnames(vue_data_raw)[1]  <- 'datetime'
+colnames(vue_data_raw)[2]  <- 'receiver'
+colnames(vue_data_raw)[3]  <- 'tag_id'
+colnames(vue_data_raw)[4]  <- 'name'
+colnames(vue_data_raw)[5]  <- 'tag_serial'
+colnames(vue_data_raw)[6]  <- 'sensor_value'
+colnames(vue_data_raw)[7]  <- 'sensor.unit'
+colnames(vue_data_raw)[8]  <- 'station'
+colnames(vue_data_raw)[9]  <- 'lat'
+colnames(vue_data_raw)[10] <- 'lon'
+return (vue_data_raw)
+}
+load_vemco = function(filename, filepath = FALSE, format = '%Y-%m-%d %H:%M:%S'){
+## Function that loads in Vemco Database from a VUE Export file
+proj_dir = getwd()
+if (isTRUE(filepath != FALSE)) {setwd(filepath)}
+vue_data_raw = read.csv(filename)
+vue_data_cleaned = vue_col_names(vue_data_raw)
+vue_data_cleaned$datetime = strptime(vue_data_cleaned$datetime,
+format = format,
+tz = "GMT")
+vue_data_cleaned$datetime = convert_tz(vue_data_cleaned$datetime, new.tz = 'HST')
+vue_data_cleaned$tag_id = clean_tag_id(vue_data_cleaned$tag_id)
+vue_data_cleaned$receiver = clean_receiver(vue_data_cleaned$receiver)
+setwd(proj_dir)
+return (vue_data_cleaned)
+}
+compute_standard_error = function(numeric_vector){
+stderror = sd(numeric_vector) / sqrt(length(numeric_vector))
+}
+as.number = function(x){
+if(class(x) == 'factor'){
+x = levels(x)[x]
+}
+as.numeric(x)
+}
+####### COMPONENT 1: Deep Water Range Test ----
+#### Loading In and Cleaning Data Files ----
+setwd(data_dir)
+### Loading Receiver Data
+receiver_data = load_receiver(filename = 'DEPLOYMENT_RECOVERY_LOG.csv')
+# dim(receiver_data)
+# 217  28
+### Loading VUE data
+vue_data = load_vemco(filename = 'Range_Test_June_2014_All_Receivers.csv', format = '%m/%d/%y %H:%M')
+#  dim(vue_data)
+# 130284     10
+### Importing Windspeed Data from from NOAA Honolulu station Station ID 1612340
+# http://www.ndbc.noaa.gov/view_text_file.php?filename=oouh1h2014.txt.gz&dir=data/historical/stdmet/
+# parent: http://www.ndbc.noaa.gov/station_history.php?station=oouh1
+# Data dates range between dates 2014-01-01 00:00:00 and 2014-12-31 23:54:00
+# with the following format:
+# YY  MM DD hh mm WDIR WSPD GST  WVHT   DPD   APD MWD   PRES  ATMP  WTMP  DEWP  VIS  TIDE
+# with the following units:
+# yr  mo dy hr mn degT m/s  m/s     m   sec   sec degT   hPa  degC  degC  degC   mi    ft
+wind_data = as.data.frame(read.table("oouh1h2014.txt"), header = TRUE, sep = " ")
+# dim(wind_data)
+# 85864    18
+colnames(wind_data) = c("YY",  "MM", "DD", "hh", "mm", "WDIR", "WSPD", "GST",  "WVHT",   "DPD",   "APD", "MWD",   "PRES",  "ATMP",  "WTMP",  "DEWP",  "VIS",  "TIDE")
+### Convert dates and times to POSIXct format. (Station data time is in local (UTC) time by default)
+wind_data$datetime = as.POSIXct(paste(wind_data$YY, "-", wind_data$MM, "-", wind_data$DD, " ", wind_data$hh, ":", wind_data$mm, sep = ""), format = "%Y-%m-%d %H:%M", tz = "GMT")
+### Convert datetime to HST
+wind_data$datetime = strftime(wind_data$datetime, format = "%Y-%m-%d %H:%M")
+wind_data$hourly = strftime(wind_data$datetime, format = "%Y-%m-%d %H")
+### Grouping windspeed data into hourly means (mean_wspd)
+wind_data_grouped = group_by(wind_data, hourly)
+wspd_by_hour = summarize(wind_data_grouped, mean_wspd = mean(WSPD))
+wspd_by_hour$hourly = as.POSIXct(wspd_by_hour$hourly, format = "%Y-%m-%d %H")
+### Grouping windgust data into hourly means
+gst_by_hour = summarize(wind_data_grouped, mean_gst = mean(GST))
+gst_by_hour$hourly = as.POSIXct(gst_by_hour$hourly, format = "%Y-%m-%d %H")
+### Importing tide data from: NOAA Honolulu station, accessed 28 OCT 2015
+# http://tidesandcurrents.noaa.gov/waterlevels.html?id=1612340&units=standard&bdate=20110930&edate=20100930&timezone=LST&datum=MLLW&interval=h&action=## Meta data available here:
+# Data accessed for dates ranging between 2013-09-30 00:00:00 HST and 2014-09-30 13:00:00 HST
+# Data is already in HST
+tide_data = read.csv('noaa tide data 2013-2014.csv')
+# dim(tide_data)
+# 8774    5
+colnames(tide_data) = c("hour_bin", "water_level", 'sigma', 'I', "L")
+tide_data$hour_bin = as.POSIXct(tide_data$hour_bin, format = "%Y-%m-%d %H:%M")
+### Determining if tide was going in or out.
+## First assume all data is headed in
+tide_data$direction = "In"
+## Then loop through data. If current water level is less than previous water level, tide is going out.
+for(i in 2:length(tide_data$direction)){
+if(tide_data$water_level[i-1] > tide_data$water_level[i]){
+tide_data$direction[i] = "Out"
+}
+}
+tide_data$direction = as.factor(tide_data$direction)
+### Importing Tag Deployment Meta Data File
+tag_meta_data = read.csv('Range Test June 2014 - Tag Meta Data Locations and Depth.csv')
+# dim(tag_meta_data)
+# 12  9
+### Converting tag_meta_data Lat Lons from degree minutes to decimal degrees
+tag_meta_data$lat = convert_lat_lon(tag_meta_data$lat_deg, tag_meta_data$lat_min)
+tag_meta_data$lon = convert_lat_lon(tag_meta_data$lon_deg, tag_meta_data$lon_min)
+### Determining distance of tag from receiver string using lon and lat waypoints from gps
+for (i in 1:length(tag_meta_data$distance)){
+tag_meta_data$distance[i] = round(1000*(lldist(point1 = c(tag_meta_data$lon[i],
+tag_meta_data$lat[i]),
+point2 = c(receiver_data$lon[receiver_data$station_name == 'Range Test - June 2014 - Diamond Head 1m'][1],
+receiver_data$lat[receiver_data$station_name == 'Range Test - June 2014 - Diamond Head 1m'][1]))))
+}
+unique(tag_meta_data$distance)
+# 0 199 399 578 766 959
+### Removing any other receivers in the database
+receiver_1m = 123736 # serial number of receiver in 1 m depth
+receiver_30m = 123732 # serial number of receiver in 30 m depth
+vue_data = vue_data[which(vue_data$receiver %in% c(receiver_1m, receiver_30m)), ]
+### Removing detections prior to experiment (occurred durring experiment set up on boat) and determining an end to the experiment.
+start_date = as.POSIXct('2014-06-07 8:00:00', tz = "HST")
+# "2014-06-07 08:00:00 HST"
+end_date = as.POSIXct("2014-06-26 05:00:00", format = "%Y-%m-%d %H:%M:%S")
+# "2014-06-26 05:00:00 HST"
+vue_data = vue_data[which(vue_data$datetime >= start_date & vue_data$datetime < end_date), ]
+### Rounding off of final partial hour to account for transmissions received while gear was recovered
+vue_data = vue_data[which(vue_data$datetime >= ceiling_date(min(vue_data$datetime), unit = 'hour') & vue_data$datetime < floor_date(max(vue_data$datetime), unit = 'hour')), ]
+range(vue_data$datetime)
+# "2014-06-07 09:00:00 HST" "2014-06-26 03:59:00 HST"
+## How many total detections occurred durring the course of the experiment? (includes tags not part of range test)
+detections_all = dim(vue_data)[1]
+# 129622
+### Removing tags not in experiment. This could be a tagged fish that swam by or a false detection
+tags_0m    = c(18236, 18237)
+tags_200m  = c(18238, 18239)
+tags_400m  = c(18240, 18241)
+tags_600m  = c(18242, 18243)
+tags_800m  = c(18244, 18245)
+tags_1000m = c(18246, 18247)
+tag_ids = c(tags_0m, tags_200m, tags_400m, tags_600m, tags_800m, tags_1000m)
+vue_data = vue_data[as.numeric(levels(vue_data$tag_id))[vue_data$tag_id]
+%in% tag_ids, ]
+## How many detections were from tags that were part of the experiment?
+detections_experiment = dim(vue_data)[1]
+# 128178
+detections_experiment / detections_all * 100
+# 98.88599 %
+## How many detections were from tags that were not part of the experiment?
+detections_other = detections_all - detections_experiment
+# 1444
+detections_other / detections_all * 100
+# 1.114008
+### Assigning Lon Lat positions to vue_data
+vue_data = clean_vue_lat_lon(vue_data_df = vue_data,
+receiver_data_df = receiver_data)
+### Getting estimated distances between receivers and tags based on deployment coordinates
+for (i in 1:length(tag_meta_data$lon)){
+tag_meta_data$distance[i] = lldist(point1 = c(unique(vue_data$lon)[1],
+unique(vue_data$lat)[1]),
+point2 = c((tag_meta_data$lon)[i],
+(tag_meta_data$lat)[i])) *
+1000 # m/km
+}
+round(unique(tag_meta_data$distance))
+# 0 199 399 578 766 959
+## First assign each datum to an date and hour bin
+vue_data$hour_bin = floor_date(vue_data$datetime, unit = "hour")
+## Then loop through combinations of date/hour, tag id, and receiver to get the number of detections from a tag at a receiver each hour
 detection_df_1 = data.frame()
 registerDoParallel(cores = n_cores)
 detection_df_1 = foreach(b = c(1:length(unique(vue_data$hour_bin))), .combine = rbind) %:%
@@ -492,6 +489,9 @@ as.character(unique(vue_data$receiver))[r],
 dim(filtered)[1])
 return(write_line)
 }
+amdr
+cpdi_extent
+###### Script for CPDI Doughnut Effect Paper - Producing analysis results and figures for publication
 #### Written by: Stephen R. Scherrer
 #### 26 January 2017
 ####### Cleaning workspace and setting directories ----
